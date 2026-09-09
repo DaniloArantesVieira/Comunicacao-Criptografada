@@ -27,7 +27,10 @@ key ${CERT_DIR}/${CLIENT_NAME}.key.pem
 
 tls-client
 tls-version-min 1.3
-ecdh-curve prime256v1
+tls-groups X25519:secp256r1
+
+remote-cert-tls server
+verify-x509-name server name
 
 data-ciphers CHACHA20-POLY1305
 data-ciphers-fallback CHACHA20-POLY1305
