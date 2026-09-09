@@ -1,3 +1,4 @@
+import os
 import socket
 import time
 
@@ -10,7 +11,7 @@ from crypto.ecdh import (
 )
 from crypto.kdf import derive_key
 
-HOST = "app_server"
+HOST = os.getenv("APP_SERVER_HOST", "app_server")
 PORT = 5000
 
 MAX_CONNECTION_ATTEMPTS = 10
