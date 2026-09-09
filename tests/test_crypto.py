@@ -125,6 +125,7 @@ def test_chacha20_poly1305_uses_unique_nonces():
     assert nonce_a != nonce_b
     assert ciphertext_a != ciphertext_b
 
+
 def test_x25519_independent_sessions_produce_different_secrets():
     alice_private_a, _ = generate_key_pair()
     _, bob_public_a = generate_key_pair()
