@@ -2,7 +2,12 @@ import socket
 import time
 
 from crypto.chacha20 import decrypt_message
-from crypto.ecdh import compute_shared_secret, generate_key_pair, load_public_key, serialize_public_key
+from crypto.ecdh import (
+    compute_shared_secret,
+    generate_key_pair,
+    load_public_key,
+    serialize_public_key,
+)
 from crypto.kdf import derive_key
 
 HOST = "0.0.0.0"
