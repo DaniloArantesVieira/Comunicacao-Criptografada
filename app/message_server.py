@@ -14,13 +14,19 @@ HOST = "0.0.0.0"
 PORT = 5000
 
 
-def recv_exact(conn, n: int) -> bytes:
+def recv_exact(conn: socket.socket, n: int) -> bytes:
     data = b""
+
     while len(data) < n:
         chunk = conn.recv(n - len(data))
+
         if not chunk:
-            raise ConnectionError("Conexão encerrada antes de receber todos os bytes")
+            raise ConnectionError(
+                "Conexão encerrada antes de receber todos os bytes"
+            )
+
         data += chunk
+
     return data
 
 
@@ -33,9 +39,11 @@ def main():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind((HOST, PORT))
         sock.listen(1)
+
         print(f"[APP SERVER] Escutando em {HOST}:{PORT}...")
 
         conn, addr = sock.accept()
+
         with conn:
             print(f"[APP SERVER] Conexão recebida de {addr}")
 
@@ -46,15 +54,22 @@ def main():
             print(f"[APP SERVER] Chave pública enviada: {server_public_bytes.hex()}")
 
             peer_public_key = load_public_key(peer_pub)
-            shared_secret = compute_shared_secret(server_private, peer_public_key)
-            print(f"[APP SERVER] Segredo compartilhado: {shared_secret.hex()}")
+            shared_secret = compute_shared_secret(
+                server_private,
+                peer_public_key,
+            )
 
-            key = derive_key(shared_secret, salt=b"securelink-salt", info=b"msg-channel")
-            print(f"[APP SERVER] Chave derivada HKDF: {key.hex()}")
+            key = derive_key(
+                shared_secret,
+                salt=b"securelink-salt",
+                info=b"msg-channel",
+            )
 
             aad_len = int.from_bytes(recv_exact(conn, 2), "big")
             aad = recv_exact(conn, aad_len)
+
             nonce = recv_exact(conn, 12)
+
             ct_len = int.from_bytes(recv_exact(conn, 4), "big")
             ciphertext = recv_exact(conn, ct_len)
 
@@ -63,11 +78,20 @@ def main():
             print(f"[APP SERVER] Ciphertext+Tag: {ciphertext.hex()}")
             print(f"[APP SERVER] Tag Poly1305: {ciphertext[-16:].hex()}")
 
-            plaintext = decrypt_message(nonce, ciphertext, key, aad)
+            plaintext = decrypt_message(
+                nonce,
+                ciphertext,
+                key,
+                aad,
+            )
+
             if plaintext is None:
                 print("[APP SERVER] Falha de autenticação: InvalidTag")
             else:
-                print(f"[APP SERVER] Mensagem decifrada: {plaintext.decode()}")
+                print(
+                    f"[APP SERVER] Mensagem decifrada: "
+                    f"{plaintext.decode()}"
+                )
 
             time.sleep(2)
 
