@@ -13,31 +13,81 @@ from crypto.kdf import derive_key
 HOST = "app_server"
 PORT = 5000
 
+MAX_CONNECTION_ATTEMPTS = 10
+RETRY_DELAY_SECONDS = 1
+
+
+def recv_exact(sock: socket.socket, n: int) -> bytes:
+    data = b""
+
+    while len(data) < n:
+        chunk = sock.recv(n - len(data))
+
+        if not chunk:
+            raise ConnectionError(
+                "Conexão encerrada antes de receber todos os bytes"
+            )
+
+        data += chunk
+
+    return data
+
+
+def connect_with_retry() -> socket.socket:
+    for attempt in range(1, MAX_CONNECTION_ATTEMPTS + 1):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        try:
+            sock.connect((HOST, PORT))
+            return sock
+
+        except OSError as exc:
+            sock.close()
+
+            if attempt == MAX_CONNECTION_ATTEMPTS:
+                raise ConnectionError(
+                    f"Não foi possível conectar a {HOST}:{PORT} "
+                    f"após {MAX_CONNECTION_ATTEMPTS} tentativas"
+                ) from exc
+
+            print(
+                "[APP CLIENT] Servidor indisponível "
+                f"(tentativa {attempt}/{MAX_CONNECTION_ATTEMPTS})."
+            )
+
+            time.sleep(RETRY_DELAY_SECONDS)
+
+    raise RuntimeError("Estado de conexão inesperado")
+
 
 def main():
-    time.sleep(3)
     print("[APP CLIENT] Iniciando transmissor...")
 
     client_private, client_public = generate_key_pair()
     client_public_bytes = serialize_public_key(client_public)
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.connect((HOST, PORT))
-
+    with connect_with_retry() as sock:
         sock.sendall(client_public_bytes)
         print(f"[APP CLIENT] Chave pública enviada: {client_public_bytes.hex()}")
 
-        peer_pub = sock.recv(32)
+        peer_pub = recv_exact(sock, 32)
         print(f"[APP CLIENT] Chave pública recebida: {peer_pub.hex()}")
 
         peer_public_key = load_public_key(peer_pub)
         shared_secret = compute_shared_secret(client_private, peer_public_key)
-        print(f"[APP CLIENT] Segredo compartilhado: {shared_secret.hex()}")
 
-        key = derive_key(shared_secret, salt=b"securelink-salt", info=b"msg-channel")
-        print(f"[APP CLIENT] Chave derivada HKDF: {key.hex()}")
+        key = derive_key(
+            shared_secret,
+            salt=b"securelink-salt",
+            info=b"msg-channel",
+        )
 
-        aad = b"remetente=filial_norte;destinatario=filial_sul;timestamp=2026-03-31T20:00:00Z"
+        aad = (
+            b"remetente=filial_norte;"
+            b"destinatario=filial_sul;"
+            b"timestamp=2026-03-31T20:00:00Z"
+        )
+
         plaintext = b"Transferencia aprovada no valor de R$ 18.500,00"
 
         nonce, ciphertext = encrypt_message(plaintext, key, aad)
