@@ -9,25 +9,17 @@ from crypto.ecdh import (
     serialize_public_key,
 )
 from crypto.kdf import derive_key
+from protocol import (
+    MAX_AAD_SIZE,
+    MAX_CIPHERTEXT_SIZE,
+    MIN_CIPHERTEXT_SIZE,
+    SOCKET_TIMEOUT_SECONDS,
+    recv_exact,
+    recv_frame_length,
+)
 
 HOST = "0.0.0.0"
 PORT = 5000
-
-
-def recv_exact(conn: socket.socket, n: int) -> bytes:
-    data = b""
-
-    while len(data) < n:
-        chunk = conn.recv(n - len(data))
-
-        if not chunk:
-            raise ConnectionError(
-                "Conexão encerrada antes de receber todos os bytes"
-            )
-
-        data += chunk
-
-    return data
 
 
 def main():
@@ -45,6 +37,8 @@ def main():
         conn, addr = sock.accept()
 
         with conn:
+            conn.settimeout(SOCKET_TIMEOUT_SECONDS)
+
             print(f"[APP SERVER] Conexão recebida de {addr}")
 
             peer_pub = recv_exact(conn, 32)
@@ -65,12 +59,23 @@ def main():
                 info=b"msg-channel",
             )
 
-            aad_len = int.from_bytes(recv_exact(conn, 2), "big")
+            aad_len = recv_frame_length(
+                conn,
+                2,
+                name="AAD",
+                maximum=MAX_AAD_SIZE,
+            )
             aad = recv_exact(conn, aad_len)
 
             nonce = recv_exact(conn, 12)
 
-            ct_len = int.from_bytes(recv_exact(conn, 4), "big")
+            ct_len = recv_frame_length(
+                conn,
+                4,
+                name="ciphertext",
+                minimum=MIN_CIPHERTEXT_SIZE,
+                maximum=MAX_CIPHERTEXT_SIZE,
+            )
             ciphertext = recv_exact(conn, ct_len)
 
             print(f"[APP SERVER] AAD: {aad.decode(errors='ignore')}")
