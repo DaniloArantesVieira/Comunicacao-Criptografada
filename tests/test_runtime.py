@@ -13,6 +13,7 @@ if str(APP_DIR) not in sys.path:
 
 message_client = importlib.import_module("message_client")
 message_server = importlib.import_module("message_server")
+protocol = importlib.import_module("protocol")
 
 
 def test_client_recv_exact_handles_partial_reads():
@@ -82,6 +83,15 @@ def test_connect_with_retry_succeeds_after_temporary_failures(monkeypatch):
 
     assert result is third_socket
 
+    for sock in (
+        first_socket,
+        second_socket,
+        third_socket,
+    ):
+        sock.settimeout.assert_called_once_with(
+            message_client.SOCKET_TIMEOUT_SECONDS
+        )
+
     first_socket.close.assert_called_once()
     second_socket.close.assert_called_once()
     third_socket.close.assert_not_called()
@@ -133,3 +143,61 @@ def test_runtime_does_not_log_sensitive_key_material(module):
     assert "Chave derivada HKDF" not in source
     assert "shared_secret.hex()" not in source
     assert "key.hex()" not in source
+
+
+def test_protocol_rejects_oversized_aad():
+    with pytest.raises(
+        ValueError,
+        match="AAD fora dos limites permitidos",
+    ):
+        protocol.validate_frame_size(
+            "AAD",
+            protocol.MAX_AAD_SIZE + 1,
+            maximum=protocol.MAX_AAD_SIZE,
+        )
+
+
+def test_protocol_rejects_oversized_ciphertext():
+    with pytest.raises(
+        ValueError,
+        match="ciphertext fora dos limites permitidos",
+    ):
+        protocol.validate_frame_size(
+            "ciphertext",
+            protocol.MAX_CIPHERTEXT_SIZE + 1,
+            minimum=protocol.MIN_CIPHERTEXT_SIZE,
+            maximum=protocol.MAX_CIPHERTEXT_SIZE,
+        )
+
+
+def test_protocol_rejects_ciphertext_shorter_than_tag():
+    with pytest.raises(
+        ValueError,
+        match="ciphertext fora dos limites permitidos",
+    ):
+        protocol.validate_frame_size(
+            "ciphertext",
+            protocol.MIN_CIPHERTEXT_SIZE - 1,
+            minimum=protocol.MIN_CIPHERTEXT_SIZE,
+            maximum=protocol.MAX_CIPHERTEXT_SIZE,
+        )
+
+
+def test_recv_frame_length_rejects_oversized_frame_before_payload():
+    sock = MagicMock()
+    oversized = protocol.MAX_CIPHERTEXT_SIZE + 1
+    sock.recv.return_value = oversized.to_bytes(4, "big")
+
+    with pytest.raises(
+        ValueError,
+        match="ciphertext fora dos limites permitidos",
+    ):
+        protocol.recv_frame_length(
+            sock,
+            4,
+            name="ciphertext",
+            minimum=protocol.MIN_CIPHERTEXT_SIZE,
+            maximum=protocol.MAX_CIPHERTEXT_SIZE,
+        )
+
+    sock.recv.assert_called_once_with(4)

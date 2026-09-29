@@ -10,6 +10,14 @@ from crypto.ecdh import (
     serialize_public_key,
 )
 from crypto.kdf import derive_key
+from protocol import (
+    MAX_AAD_SIZE,
+    MAX_CIPHERTEXT_SIZE,
+    MIN_CIPHERTEXT_SIZE,
+    SOCKET_TIMEOUT_SECONDS,
+    recv_exact,
+    validate_frame_size,
+)
 
 HOST = os.getenv("APP_SERVER_HOST", "app_server")
 PORT = 5000
@@ -18,25 +26,10 @@ MAX_CONNECTION_ATTEMPTS = 10
 RETRY_DELAY_SECONDS = 1
 
 
-def recv_exact(sock: socket.socket, n: int) -> bytes:
-    data = b""
-
-    while len(data) < n:
-        chunk = sock.recv(n - len(data))
-
-        if not chunk:
-            raise ConnectionError(
-                "Conexão encerrada antes de receber todos os bytes"
-            )
-
-        data += chunk
-
-    return data
-
-
 def connect_with_retry() -> socket.socket:
     for attempt in range(1, MAX_CONNECTION_ATTEMPTS + 1):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(SOCKET_TIMEOUT_SECONDS)
 
         try:
             sock.connect((HOST, PORT))
@@ -89,9 +82,22 @@ def main():
             b"timestamp=2026-03-31T20:00:00Z"
         )
 
+        validate_frame_size(
+            "AAD",
+            len(aad),
+            maximum=MAX_AAD_SIZE,
+        )
+
         plaintext = b"Transferencia aprovada no valor de R$ 18.500,00"
 
         nonce, ciphertext = encrypt_message(plaintext, key, aad)
+
+        validate_frame_size(
+            "ciphertext",
+            len(ciphertext),
+            minimum=MIN_CIPHERTEXT_SIZE,
+            maximum=MAX_CIPHERTEXT_SIZE,
+        )
 
         print(f"[APP CLIENT] AAD: {aad.decode()}")
         print(f"[APP CLIENT] Nonce: {nonce.hex()}")
